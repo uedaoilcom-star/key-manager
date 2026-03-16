@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>鍵管理システム</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3250;
+    --accent: #4f8ef7;
+    --accent2: #7c5cfc;
+    --danger: #f75f5f;
+    --success: #3ecf8e;
+    --warning: #f7c04f;
+    --text: #e8eaf6;
+    --text2: #8b91b5;
+    --text3: #555a7a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a1d27 0%, #1e2140 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 20px 12px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  .logo-text { font-size: 16px; font-weight: 700; letter-spacing: 0.05em; }
+  .logo-sub { font-size: 10px; color: var(--text2); letter-spacing: 0.1em; }
+  .stats { display: flex; gap: 8px; }
+  .stat-chip { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-family: 'DM Mono', monospace; font-weight: 500; }
+  .stat-chip.out { background: rgba(247,95,95,0.15); color: var(--danger); border: 1px solid rgba(247,95,95,0.3); }
+  .stat-chip.in  { background: rgba(62,207,142,0.15); color: var(--success); border: 1px solid rgba(62,207,142,0.3); }
+
+  .tabs { display: flex; background: var(--surface2); border-radius: 12px; padding: 3px; gap: 2px; }
+  .tab {
+    flex: 1; padding: 8px; border: none; background: transparent;
+    color: var(--text2); font-family: 'Noto Sans JP', sans-serif; font-size: 12px; font-weight: 500;
+    border-radius: 9px; cursor: pointer; transition: all 0.2s;
+  }
+  .tab.active { background: var(--accent); color: white; box-shadow: 0 2px 8px rgba(79,142,247,0.4); }
+  .tab.admin-tab.active { background: linear-gradient(135deg, #f7c04f, #f7954f); color: #1a1d27; box-shadow: 0 2px 8px rgba(247,192,79,0.4); }
+
+  .main { padding: 12px; max-width: 1200px; margin: 0 auto; }
+  .section { display: none; }
+  .section.active { display: block; }
+
+  .key-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  /* 在庫あり：落ち着いた暗緑 */
+  .key-card {
+    border-radius: 20px; padding: 24px 20px 20px;
+    cursor: pointer; transition: all 0.25s; position: relative;
+    overflow: hidden; min-height: 160px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .key-card.available {
+    background: linear-gradient(145deg, #0d2b1e, #112d22);
+    border: 2px solid rgba(62,207,142,0.35);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+  /* 持出中：鮮やかな赤背景でひと目でわかる */
+  .key-card.checkedout {
+    background: linear-gradient(145deg, #3a0a0a, #4a0f0f);
+    border: 2px solid rgba(247,95,95,0.6);
+    box-shadow: 0 4px 24px rgba(247,95,95,0.25);
+  }
+  .key-card:active { transform: scale(0.97); }
+
+  /* 上部ライン削除（背景色で十分なので） */
+  .key-card::before { display: none; }
+
+  /* 番号：小さくサブテキストとして */
+  .key-number {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; font-weight: 400;
+    letter-spacing: 0.08em;
+  }
+  .key-card.available  .key-number { color: rgba(62,207,142,0.6); }
+  .key-card.checkedout .key-number { color: rgba(247,95,95,0.6); }
+
+  /* 名称：大きくはっきり */
+  .key-name {
+    font-size: 18px; font-weight: 700;
+    line-height: 1.35; margin: 6px 0 14px;
+  }
+  .key-card.available  .key-name { color: #e8f8f2; }
+  .key-card.checkedout .key-name { color: #ffe8e8; }
+
+  /* ステータスバッジ */
+  .key-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 20px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.03em;
+    align-self: flex-start;
+  }
+  .key-status.available  { background: rgba(62,207,142,0.2);  color: #3ecf8e; border: 1px solid rgba(62,207,142,0.4); }
+  .key-status.checkedout { background: rgba(247,95,95,0.25);  color: #ff8080; border: 1px solid rgba(247,95,95,0.5); }
+  .key-status .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  /* 持出者名・日時 */
+  .key-holder {
+    font-size: 12px; margin-top: 8px; line-height: 1.6;
+  }
+  .key-card.available  .key-holder { color: rgba(62,207,142,0.7); }
+  .key-card.checkedout .key-holder { color: rgba(255,180,180,0.85); }
+
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 200;
+    backdrop-filter: blur(4px); align-items: flex-end; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 24px 24px 0 0; padding: 24px 24px 44px;
+    width: 100%; max-width: 600px;
+    animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 20px; }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .modal-subtitle { font-size: 12px; color: var(--text2); margin-bottom: 20px; }
+
+  .form-group { margin-bottom: 16px; }
+  .form-label { display: block; font-size: 11px; font-weight: 600; color: var(--text2); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+  .form-input {
+    width: 100%; background: var(--surface2); border: 1.5px solid var(--border);
+    border-radius: 12px; padding: 14px 16px; color: var(--text);
+    font-family: 'Noto Sans JP', sans-serif; font-size: 20px; outline: none; transition: border-color 0.2s;
+  }
+  .form-input:focus { border-color: var(--accent); }
+  .form-input.error { border-color: var(--danger); animation: shake 0.3s; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+
+  .name-preview {
+    margin-top: 8px; padding: 10px 14px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; display: none;
+  }
+  .name-preview.found    { background: rgba(62,207,142,0.12); color: var(--success); border: 1px solid rgba(62,207,142,0.3); display: block; }
+  .name-preview.notfound { background: rgba(247,95,95,0.12); color: var(--danger);  border: 1px solid rgba(247,95,95,0.3);  display: block; }
+  .name-preview.unknown  { background: rgba(247,192,79,0.12); color: var(--warning); border: 1px solid rgba(247,192,79,0.3); display: block; line-height: 1.6; }
+
+  .btn {
+    width: 100%; padding: 16px; border: none; border-radius: 14px;
+    font-family: 'Noto Sans JP', sans-serif; font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s; margin-top: 6px;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; }
+  .btn-primary   { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; box-shadow: 0 4px 15px rgba(79,142,247,0.35); }
+  .btn-danger    { background: linear-gradient(135deg, var(--danger), #c0392b); color: white; box-shadow: 0 4px 15px rgba(247,95,95,0.35); }
+  .btn-secondary { background: var(--surface2); color: var(--text2); border: 1.5px solid var(--border); margin-top: 8px; }
+  .btn-warning   { background: linear-gradient(135deg, var(--warning), #f7954f); color: #1a1d27; font-weight: 700; }
+
+  .history-list { display: flex; flex-direction: column; gap: 10px; }
+  .history-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px 16px; display: flex; align-items: flex-start; gap: 14px;
+  }
+  .history-key-num { font-family: 'DM Mono', monospace; font-size: 20px; font-weight: 500; color: var(--accent); min-width: 44px; padding-top: 2px; }
+  .history-info { flex: 1; }
+  .history-name    { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .history-persons { font-size: 12px; color: var(--text2); margin-bottom: 4px; line-height: 1.8; }
+  .history-times   { font-size: 11px; color: var(--text3); font-family: 'DM Mono', monospace; }
+  .history-badge   { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; margin-top: 2px; }
+  .history-badge.returned { background: rgba(62,207,142,0.15); color: var(--success); }
+  .history-badge.out      { background: rgba(247,95,95,0.15);  color: var(--danger);  }
+
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; overflow-x: auto; padding-bottom: 4px; }
+  .filter-chip {
+    padding: 7px 14px; border-radius: 20px; border: 1.5px solid var(--border);
+    background: transparent; color: var(--text2); font-family: 'Noto Sans JP', sans-serif;
+    font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 0.2s;
+  }
+  .filter-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  .csv-btn {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 16px; background: var(--surface2); border: 1.5px solid var(--border);
+    border-radius: 10px; color: var(--text2); font-size: 13px; cursor: pointer;
+    margin-bottom: 16px; font-family: 'Noto Sans JP', sans-serif; width: 100%;
+  }
+
+  /* ADMIN */
+  .admin-lock {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 60px 20px; text-align: center;
+  }
+  .lock-icon  { font-size: 48px; margin-bottom: 16px; }
+  .lock-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .lock-desc  { font-size: 13px; color: var(--text2); margin-bottom: 24px; }
+
+  .admin-section { margin-bottom: 24px; }
+  .section-title {
+    font-size: 12px; font-weight: 600; color: var(--text2);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  .admin-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+  .admin-item {
+    display: flex; align-items: center; padding: 16px;
+    border-bottom: 1px solid var(--border); gap: 12px;
+  }
+  .admin-item:last-child { border-bottom: none; }
+  .admin-item-icon { font-size: 20px; min-width: 28px; }
+  .admin-item-text { flex: 1; }
+  .admin-item-label { font-size: 14px; font-weight: 500; }
+  .admin-item-desc  { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .admin-btn {
+    padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface2); color: var(--accent); font-size: 12px;
+    cursor: pointer; font-family: 'Noto Sans JP', sans-serif; white-space: nowrap;
+  }
+  .admin-btn.danger { color: var(--danger); }
+  .admin-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .add-key-inline { padding: 16px; }
+  .inline-row { display: flex; gap: 8px; }
+  .inline-row .form-input { margin: 0; }
+  .inline-btn {
+    padding: 14px 16px; background: var(--accent); color: white; border: none;
+    border-radius: 12px; font-size: 20px; cursor: pointer; flex-shrink: 0;
+  }
+
+  .emp-count { font-size: 12px; color: var(--success); margin-top: 6px; }
+
+  .badge-admin {
+    display: inline-block; padding: 2px 8px;
+    background: rgba(247,192,79,0.2); color: var(--warning);
+    border: 1px solid rgba(247,192,79,0.4); border-radius: 6px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.05em; margin-left: 8px;
+  }
+
+  .toast {
+    position: fixed; bottom: 30px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 20px; font-size: 13px; font-weight: 500;
+    z-index: 300; transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    white-space: nowrap; box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--success); color: var(--success); }
+  .toast.info    { border-color: var(--accent);  color: var(--accent);  }
+  .toast.warn    { border-color: var(--warning); color: var(--warning); }
+
+  .empty { text-align: center; padding: 40px 20px; color: var(--text3); font-size: 14px; }
+  .empty-icon { font-size: 40px; margin-bottom: 10px; }
+
+  /* 最終退場カード */
+  .exit-card {
+    grid-column: 1 / -1;
+    background: linear-gradient(135deg, #0d2a1f 0%, #0a1f30 100%);
+    border: 2px solid #3ecf8e;
+    border-radius: 20px; padding: 20px 24px;
+    cursor: pointer; transition: all 0.2s;
+    position: relative; overflow: hidden;
+    display: flex; align-items: center; gap: 16px;
+    box-shadow: 0 0 20px rgba(62,207,142,0.1);
+  }
+  .exit-card::before { display: none; }
+  .exit-card:active { transform: scale(0.99); }
+  .exit-card:hover { box-shadow: 0 0 30px rgba(62,207,142,0.2); }
+  .exit-card-icon { font-size: 32px; flex-shrink: 0; }
+  .exit-card-info { flex: 1; }
+  .exit-card-title { font-size: 16px; font-weight: 700; color: var(--success); margin-bottom: 4px; }
+  .exit-card-last { font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .exit-card-arrow { font-size: 24px; color: var(--success); opacity: 0.6; }
+
+  /* 履歴：最終退場バッジ */
+  .history-badge.exit { background: rgba(62,207,142,0.15); color: var(--success); }
+  .history-item.exit-item { border-color: rgba(62,207,142,0.25); background: rgba(62,207,142,0.04); }
+  .history-key-num.exit { color: var(--success); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div class="logo">
+      <div class="logo-icon">🔑</div>
+      <div>
+        <div class="logo-text">KEY MANAGER <span class="badge-admin" id="adminBadge" style="display:none">ADMIN</span></div>
+        <div class="logo-sub">鍵持ち出し管理システム</div>
+      </div>
+    </div>
+    <div class="stats">
+      <span class="stat-chip out" id="statOut">持出 0</span>
+      <span class="stat-chip in"  id="statIn">在庫 0</span>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab active"    onclick="switchTab('keys',this)">🗝 鍵一覧</button>
+    <button class="tab"           onclick="switchTab('history',this)">📋 履歴</button>
+    <button class="tab admin-tab" onclick="switchTab('admin',this)">⚙️ 管理</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- 鍵一覧 -->
+  <div class="section active" id="sec-keys">
+    <div class="section-title">登録済み鍵</div>
+    <div class="key-grid" id="keyGrid"></div>
+  </div>
+
+  <!-- 履歴 -->
+  <div class="section" id="sec-history">
+    <button class="csv-btn" onclick="exportCSV()">📥 CSV出力</button>
+    <div class="filter-bar">
+      <button class="filter-chip active" onclick="filterHistory('all',this)">すべて</button>
+      <button class="filter-chip"        onclick="filterHistory('out',this)">持出中</button>
+      <button class="filter-chip"        onclick="filterHistory('returned',this)">返却済</button>
+      <button class="filter-chip"        onclick="filterHistory('exit',this)">🚪 最終退場</button>
+    </div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <!-- 管理 -->
+  <div class="section" id="sec-admin">
+    <div id="adminLock" class="admin-lock">
+      <div class="lock-icon">🔒</div>
+      <div class="lock-title">管理者ログイン</div>
+      <div class="lock-desc">管理者パスワードを入力してください</div>
+      <div style="width:100%;max-width:320px">
+        <input class="form-input" id="adminPwInput" type="password" placeholder="パスワード" style="text-align:center;font-size:20px;letter-spacing:0.3em">
+        <button class="btn btn-warning" style="margin-top:12px" onclick="adminLogin()">ログイン</button>
+      </div>
+    </div>
+
+    <div id="adminPanel" style="display:none">
+
+      <div class="admin-section">
+        <div class="section-title">従業員マスタ</div>
+        <div class="admin-card">
+          <div class="admin-item">
+            <div class="admin-item-icon">📂</div>
+            <div class="admin-item-text">
+              <div class="admin-item-label">CSVファイルを読み込む</div>
+              <div class="admin-item-desc">1列目:従業員番号　2列目:氏名（ヘッダー行あり・なし両対応）</div>
+              <div class="emp-count" id="empCount"></div>
+            </div>
+            <label class="admin-btn" style="cursor:pointer">
+              読込
+              <input type="file" accept=".csv" onchange="loadEmployeeCSV(event)" style="display:none">
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="section-title">鍵の管理</div>
+        <div class="admin-card">
+          <div class="add-key-inline">
+            <div style="font-size:12px;color:var(--text2);margin-bottom:8px">新しい鍵を追加</div>
+            <div class="inline-row">
+              <input class="form-input" id="newKeyNum"  placeholder="番号" style="flex:1">
+              <input class="form-input" id="newKeyName" placeholder="名称" style="flex:2">
+              <button class="inline-btn" onclick="addKey()">＋</button>
+            </div>
+          </div>
+          <div id="keyAdminList"></div>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="section-title">パスワード変更</div>
+        <div class="admin-card">
+          <div class="admin-item" style="flex-wrap:wrap;gap:8px">
+            <div class="admin-item-icon">🔐</div>
+            <div class="admin-item-text">
+              <input class="form-input" id="newPwInput"  type="password" placeholder="新しいパスワード" style="font-size:14px;padding:10px 14px">
+              <input class="form-input" id="newPwInput2" type="password" placeholder="確認用"           style="font-size:14px;padding:10px 14px;margin-top:8px">
+            </div>
+            <button class="admin-btn" onclick="changePassword()">変更</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="section-title">データ管理</div>
+        <div class="admin-card">
+          <div class="admin-item">
+            <div class="admin-item-icon">🗑</div>
+            <div class="admin-item-text">
+              <div class="admin-item-label">履歴データを削除</div>
+              <div class="admin-item-desc">鍵マスタは残ります</div>
+            </div>
+            <button class="admin-btn danger" onclick="clearHistory()">削除</button>
+          </div>
+          <div class="admin-item">
+            <div class="admin-item-icon">⚠️</div>
+            <div class="admin-item-text">
+              <div class="admin-item-label">全データを初期化</div>
+              <div class="admin-item-desc">すべて削除・初期状態に戻す</div>
+            </div>
+            <button class="admin-btn danger" onclick="clearAll()">初期化</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-secondary" onclick="adminLogout()">🔒 ログアウト</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- 持出モーダル -->
+<div class="modal-overlay" id="checkoutModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modalTitle">🔑 持ち出し登録</div>
+    <div class="modal-subtitle" id="modalSubtitle"></div>
+    <div class="form-group">
+      <label class="form-label">従業員番号</label>
+      <input class="form-input" id="checkoutEmpId" placeholder="番号を入力" type="tel"
+             oninput="lookupEmp('checkoutEmpId','checkoutPreview','checkoutBtn')">
+      <div class="name-preview" id="checkoutPreview"></div>
+    </div>
+    <button class="btn btn-primary" id="checkoutBtn" onclick="confirmCheckout()" disabled>✓ 持ち出し登録</button>
+    <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+  </div>
+</div>
+
+<!-- 返却モーダル -->
+<div class="modal-overlay" id="returnModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="returnTitle">↩ 返却登録</div>
+    <div class="modal-subtitle" id="returnSubtitle"></div>
+    <div class="form-group">
+      <label class="form-label">返却者 従業員番号</label>
+      <input class="form-input" id="returnEmpId" placeholder="番号を入力" type="tel"
+             oninput="lookupEmp('returnEmpId','returnPreview','returnBtn')">
+      <div class="name-preview" id="returnPreview"></div>
+    </div>
+    <button class="btn btn-danger" id="returnBtn" onclick="confirmReturn()" disabled>✓ 返却を登録</button>
+    <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+  </div>
+</div>
+
+<!-- 最終退場モーダル -->
+<div class="modal-overlay" id="exitModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🚪 甲南最終退場</div>
+    <div class="modal-subtitle">最後に退場する方の従業員番号を入力してください</div>
+    <div class="form-group">
+      <label class="form-label">従業員番号</label>
+      <input class="form-input" id="exitEmpId" placeholder="番号を入力" type="tel"
+             oninput="lookupEmp('exitEmpId','exitPreview','exitBtn')">
+      <div class="name-preview" id="exitPreview"></div>
+    </div>
+    <button class="btn btn-primary" id="exitBtn" onclick="confirmExit()" disabled style="background:linear-gradient(135deg,#3ecf8e,#2ba876);box-shadow:0 4px 15px rgba(62,207,142,0.35)">✓ 最終退場を記録する</button>
+    <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+  </div>
+</div>
+
+<!-- 鍵編集モーダル -->
+<div class="modal-overlay" id="editKeyModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">✏️ 鍵情報を編集</div>
+    <div class="modal-subtitle">番号・名称を変更できます</div>
+    <input type="hidden" id="editKeyId">
+    <div class="form-group">
+      <label class="form-label">鍵番号</label>
+      <input class="form-input" id="editKeyNum" placeholder="例：101" type="text">
+    </div>
+    <div class="form-group">
+      <label class="form-label">鍵名称</label>
+      <input class="form-input" id="editKeyName" placeholder="例：第1倉庫 正面扉" type="text">
+    </div>
+    <button class="btn btn-primary" onclick="saveEditKey()">✓ 保存する</button>
+    <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== STATE =====
+let keys        = JSON.parse(localStorage.getItem('km_keys')       || 'null');
+let history     = JSON.parse(localStorage.getItem('km_history')    || '[]');
+let exitHistory = JSON.parse(localStorage.getItem('km_exit')       || '[]');
+let employees   = JSON.parse(localStorage.getItem('km_employees')  || '{}');
+let adminPw     = localStorage.getItem('km_adminpw') || 'admin1234';
+let isAdmin     = false;
+let selectedKeyId = null;
+let currentFilter = 'all';
+
+if (!keys) {
+  keys = [
+    { id:1, num:'101', name:'第1倉庫 正面扉', status:'available', holderId:null, holderName:null, checkoutTime:null },
+    { id:2, num:'102', name:'第2倉庫 正面扉', status:'available', holderId:null, holderName:null, checkoutTime:null },
+    { id:3, num:'201', name:'事務所 金庫室',   status:'available', holderId:null, holderName:null, checkoutTime:null },
+    { id:4, num:'202', name:'機械室A',         status:'available', holderId:null, holderName:null, checkoutTime:null },
+    { id:5, num:'301', name:'正門ゲート',      status:'available', holderId:null, holderName:null, checkoutTime:null },
+  ];
+  save();
+}
+
+function save() {
+  localStorage.setItem('km_keys',      JSON.stringify(keys));
+  localStorage.setItem('km_history',   JSON.stringify(history));
+  localStorage.setItem('km_exit',      JSON.stringify(exitHistory));
+  localStorage.setItem('km_employees', JSON.stringify(employees));
+  localStorage.setItem('km_adminpw',   adminPw);
+}
+
+// ===== LOOKUP =====
+function lookupEmp(inputId, previewId, btnId) {
+  const id  = document.getElementById(inputId).value.trim();
+  const div = document.getElementById(previewId);
+  const btn = document.getElementById(btnId);
+  if (!id) { div.className = 'name-preview'; div.textContent = ''; btn.disabled = true; return; }
+  const name = employees[id];
+  if (name) {
+    div.className = 'name-preview found';
+    div.textContent = `👤 ${name}`;
+    btn.disabled = false;
+  } else {
+    div.className = 'name-preview unknown';
+    div.innerHTML = `⚠️ 未登録の従業員番号です<br><span style="font-size:11px;font-weight:400;opacity:0.85">このまま「氏名不明」として登録できますが、管理者にCSVの更新を連絡してください。</span>`;
+    btn.disabled = false;
+  }
+}
+
+// ===== RENDER =====
+function render() { renderKeys(); renderHistory(); renderStats(); if(isAdmin) renderKeyAdminList(); }
+
+function renderStats() {
+  document.getElementById('statOut').textContent = `持出 ${keys.filter(k=>k.status==='checkedout').length}`;
+  document.getElementById('statIn').textContent  = `在庫 ${keys.filter(k=>k.status==='available').length}`;
+}
+
+function renderKeys() {
+  const grid = document.getElementById('keyGrid');
+  const normalKeys = keys.filter(k => !k.isExit);
+  const exitCard = renderExitCard();
+  if (!normalKeys.length && !exitCard) {
+    grid.innerHTML = '<div class="empty"><div class="empty-icon">🗝</div>鍵が登録されていません</div>'; return;
+  }
+  const normalHTML = normalKeys.map(k => `
+    <div class="key-card ${k.status}" onclick="onKeyClick(${k.id})">
+      <div>
+        <div class="key-number">#${k.num}</div>
+        <div class="key-name">${k.name}</div>
+      </div>
+      <div>
+        <span class="key-status ${k.status}">
+          <span class="dot"></span>${k.status==='available' ? '在庫あり' : '持出中'}
+        </span>
+        ${k.holderName ? `<div class="key-holder">👤 ${k.holderName}<br>📅 ${k.checkoutTime}</div>` : ''}
+      </div>
+    </div>`).join('');
+  grid.innerHTML = exitCard + normalHTML;
+}
+
+function renderExitCard() {
+  const last = exitHistory.length ? exitHistory[exitHistory.length-1] : null;
+  const lastText = last
+    ? `最終退場：${last.name}（${last.empId}）　${last.time}`
+    : '記録なし';
+  return `
+    <div class="exit-card" onclick="openExitModal()">
+      <div class="exit-card-icon">🚪</div>
+      <div class="exit-card-info">
+        <div class="exit-card-title">甲南最終退場</div>
+        <div class="exit-card-last">${lastText}</div>
+      </div>
+      <div class="exit-card-arrow">›</div>
+    </div>`;
+}
+
+function renderHistory() {
+  const list = document.getElementById('historyList');
+
+  if (currentFilter === 'exit') {
+    const items = [...exitHistory].reverse();
+    if (!items.length) { list.innerHTML = '<div class="empty"><div class="empty-icon">🚪</div>最終退場の記録がありません</div>'; return; }
+    list.innerHTML = items.map(h => exitItemHTML(h)).join('');
+    return;
+  }
+
+  if (currentFilter === 'out' || currentFilter === 'returned') {
+    let items = [...history].reverse();
+    if (currentFilter==='out')      items = items.filter(h=>!h.returnTime);
+    if (currentFilter==='returned') items = items.filter(h=> h.returnTime);
+    if (!items.length) { list.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>履歴がありません</div>'; return; }
+    list.innerHTML = items.map(h => keyItemHTML(h)).join('');
+    return;
+  }
+
+  // すべて：通常履歴＋最終退場を時系列マージ
+  const normalItems = history.map(h => ({ ...h, _type:'key', _sortTime: h.coTime }));
+  const exitItems   = exitHistory.map(h => ({ ...h, _type:'exit', _sortTime: h.time }));
+  const merged = [...normalItems, ...exitItems]
+    .sort((a, b) => b._sortTime.localeCompare(a._sortTime));
+  if (!merged.length) { list.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>履歴がありません</div>'; return; }
+  list.innerHTML = merged.map(h => h._type === 'exit' ? exitItemHTML(h) : keyItemHTML(h)).join('');
+}
+
+function keyItemHTML(h) {
+  return `
+    <div class="history-item">
+      <div class="history-key-num">#${h.keyNum}</div>
+      <div class="history-info">
+        <div class="history-name">${h.keyName}</div>
+        <div class="history-persons">
+          📤 ${h.coEmpId} ${h.coName}
+          ${h.returnTime ? `<br>📥 ${h.rtEmpId} ${h.rtName}` : ''}
+        </div>
+        <div class="history-times">出: ${h.coTime}${h.returnTime ? `　返: ${h.returnTime}` : ''}</div>
+      </div>
+      <span class="history-badge ${h.returnTime ? 'returned' : 'out'}">${h.returnTime ? '返却済' : '持出中'}</span>
+    </div>`;
+}
+
+function exitItemHTML(h) {
+  return `
+    <div class="history-item exit-item">
+      <div class="history-key-num exit">🚪</div>
+      <div class="history-info">
+        <div class="history-name">甲南最終退場</div>
+        <div class="history-persons">👤 ${h.empId}　${h.name}</div>
+        <div class="history-times">${h.time}</div>
+      </div>
+      <span class="history-badge exit">退場記録</span>
+    </div>`;
+}
+
+function renderKeyAdminList() {
+  document.getElementById('keyAdminList').innerHTML = keys.map(k => `
+    <div class="admin-item">
+      <div class="admin-item-icon">🔑</div>
+      <div class="admin-item-text">
+        <div class="admin-item-label">#${k.num}　${k.name}</div>
+        <div class="admin-item-desc">${k.status==='available' ? '在庫あり' : `持出中: ${k.holderName||''}`}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="admin-btn" onclick="openEditKey(${k.id})">編集</button>
+        <button class="admin-btn danger" onclick="deleteKey(${k.id})" ${k.status==='checkedout' ? 'disabled' : ''}>削除</button>
+      </div>
+    </div>`).join('');
+  const n = Object.keys(employees).length;
+  document.getElementById('empCount').textContent = n ? `✅ ${n} 件読み込み済み` : '';
+}
+
+function openEditKey(id) {
+  const key = keys.find(k=>k.id===id);
+  document.getElementById('editKeyId').value   = id;
+  document.getElementById('editKeyNum').value  = key.num;
+  document.getElementById('editKeyName').value = key.name;
+  document.getElementById('editKeyModal').classList.add('open');
+  setTimeout(()=>document.getElementById('editKeyNum').focus(), 300);
+}
+
+function saveEditKey() {
+  const id   = Number(document.getElementById('editKeyId').value);
+  const num  = document.getElementById('editKeyNum').value.trim();
+  const name = document.getElementById('editKeyName').value.trim();
+  if (!num || !name) { showToast('番号と名称を入力してください', 'warn'); return; }
+  const conflict = keys.find(k=>k.num===num && k.id!==id);
+  if (conflict) { showToast('その番号はすでに使われています', 'warn'); return; }
+  const key = keys.find(k=>k.id===id);
+  key.num = num; key.name = name;
+  save(); render(); renderKeyAdminList();
+  closeModal();
+  showToast(`#${num} を更新しました`, 'success');
+}
+
+// ===== ACTIONS =====
+function onKeyClick(id) {
+  selectedKeyId = id;
+  const key = keys.find(k=>k.id===id);
+  if (key.status === 'available') {
+    document.getElementById('modalTitle').textContent    = `🔑 #${key.num} 持ち出し登録`;
+    document.getElementById('modalSubtitle').textContent = key.name;
+    document.getElementById('checkoutEmpId').value = '';
+    document.getElementById('checkoutPreview').className = 'name-preview';
+    document.getElementById('checkoutPreview').textContent = '';
+    document.getElementById('checkoutBtn').disabled = true;
+    document.getElementById('checkoutModal').classList.add('open');
+    setTimeout(()=>document.getElementById('checkoutEmpId').focus(), 400);
+  } else {
+    document.getElementById('returnTitle').textContent    = `↩ #${key.num} 返却登録`;
+    document.getElementById('returnSubtitle').textContent = `持出者: ${key.holderName}（${key.holderId}）　出庫: ${key.checkoutTime}`;
+    document.getElementById('returnEmpId').value = '';
+    document.getElementById('returnPreview').className = 'name-preview';
+    document.getElementById('returnPreview').textContent = '';
+    document.getElementById('returnBtn').disabled = true;
+    document.getElementById('returnModal').classList.add('open');
+    setTimeout(()=>document.getElementById('returnEmpId').focus(), 400);
+  }
+}
+
+function closeModal() { document.querySelectorAll('.modal-overlay').forEach(m=>m.classList.remove('open')); }
+
+function openExitModal() {
+  document.getElementById('exitEmpId').value = '';
+  document.getElementById('exitPreview').className = 'name-preview';
+  document.getElementById('exitPreview').textContent = '';
+  document.getElementById('exitBtn').disabled = true;
+  document.getElementById('exitModal').classList.add('open');
+  setTimeout(()=>document.getElementById('exitEmpId').focus(), 400);
+}
+
+function confirmExit() {
+  const empId = document.getElementById('exitEmpId').value.trim();
+  if (!empId) return;
+  const name = employees[empId] || '氏名不明（未登録番号）';
+  const now  = fmt(new Date());
+  exitHistory.push({ id: Date.now(), empId, name, time: now });
+  save(); render(); closeModal();
+  showToast(`甲南最終退場を記録しました（${name}）`, 'success');
+}
+
+function confirmCheckout() {
+  const empId = document.getElementById('checkoutEmpId').value.trim();
+  if (!empId) return;
+  const name  = employees[empId] || '氏名不明（未登録番号）';
+  const key   = keys.find(k=>k.id===selectedKeyId);
+  const now   = fmt(new Date());
+  key.status = 'checkedout'; key.holderId = empId; key.holderName = name; key.checkoutTime = now;
+  history.push({ id:Date.now(), keyId:key.id, keyNum:key.num, keyName:key.name,
+    coEmpId:empId, coName:name, coTime:now, rtEmpId:null, rtName:null, returnTime:null });
+  save(); render(); closeModal();
+  showToast(`#${key.num} 持ち出しを登録しました（${name}）`, 'success');
+}
+
+function confirmReturn() {
+  const empId = document.getElementById('returnEmpId').value.trim();
+  if (!empId) return;
+  const name  = employees[empId] || '氏名不明（未登録番号）';
+  const key   = keys.find(k=>k.id===selectedKeyId);
+  const now   = fmt(new Date());
+  const rec   = history.filter(h=>h.keyId===key.id && !h.returnTime).pop();
+  if (rec) { rec.rtEmpId = empId; rec.rtName = name; rec.returnTime = now; }
+  key.status = 'available'; key.holderId = null; key.holderName = null; key.checkoutTime = null;
+  save(); render(); closeModal();
+  showToast(`#${key.num} 返却登録しました（${name}）`, 'success');
+}
+
+// ===== ADMIN =====
+function adminLogin() {
+  if (document.getElementById('adminPwInput').value === adminPw) {
+    isAdmin = true;
+    document.getElementById('adminLock').style.display  = 'none';
+    document.getElementById('adminPanel').style.display = 'block';
+    document.getElementById('adminBadge').style.display = 'inline-block';
+    renderKeyAdminList();
+  } else {
+    const inp = document.getElementById('adminPwInput');
+    inp.classList.add('error');
+    setTimeout(()=>inp.classList.remove('error'), 400);
+    showToast('パスワードが違います', 'warn');
+  }
+}
+
+function adminLogout() {
+  isAdmin = false;
+  document.getElementById('adminLock').style.display  = 'block';
+  document.getElementById('adminPanel').style.display = 'none';
+  document.getElementById('adminPwInput').value = '';
+  document.getElementById('adminBadge').style.display = 'none';
+  switchTab('keys', document.querySelector('.tab'));
+}
+
+function changePassword() {
+  const p1 = document.getElementById('newPwInput').value;
+  const p2 = document.getElementById('newPwInput2').value;
+  if (!p1) { showToast('新しいパスワードを入力してください', 'warn'); return; }
+  if (p1 !== p2) { showToast('パスワードが一致しません', 'warn'); return; }
+  adminPw = p1; save();
+  document.getElementById('newPwInput').value = '';
+  document.getElementById('newPwInput2').value = '';
+  showToast('パスワードを変更しました', 'success');
+}
+
+function loadEmployeeCSV(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const lines = ev.target.result.split('\n').map(l=>l.trim()).filter(l=>l);
+    let count = 0;
+    lines.forEach(line => {
+      const cols = line.split(',');
+      if (cols.length < 2) return;
+      const id = cols[0].trim(), name = cols[1].trim();
+      if (!id || !name) return;
+      if (!/^\d+$/.test(id)) return; // ヘッダー行スキップ
+      employees[id] = name; count++;
+    });
+    save(); renderKeyAdminList();
+    showToast(`${count} 件の従業員データを読み込みました`, 'success');
+  };
+  reader.readAsText(file, 'UTF-8');
+  e.target.value = '';
+}
+
+function addKey() {
+  const num  = document.getElementById('newKeyNum').value.trim();
+  const name = document.getElementById('newKeyName').value.trim();
+  if (!num || !name) { showToast('番号と名称を入力してください', 'warn'); return; }
+  if (keys.find(k=>k.num===num)) { showToast('その番号はすでに存在します', 'warn'); return; }
+  keys.push({ id:Date.now(), num, name, status:'available', holderId:null, holderName:null, checkoutTime:null });
+  document.getElementById('newKeyNum').value = '';
+  document.getElementById('newKeyName').value = '';
+  save(); render(); renderKeyAdminList();
+  showToast(`#${num} を追加しました`, 'success');
+}
+
+function deleteKey(id) {
+  if (!confirm('この鍵を削除しますか？')) return;
+  keys = keys.filter(k=>k.id!==id);
+  save(); render(); renderKeyAdminList();
+  showToast('削除しました', 'info');
+}
+
+function clearHistory() {
+  if (!confirm('履歴データを全て削除しますか？（最終退場記録も含む）')) return;
+  history = []; exitHistory = []; save(); render();
+  showToast('履歴を削除しました', 'info');
+}
+
+function clearAll() {
+  if (!confirm('全データを初期化しますか？この操作は元に戻せません。')) return;
+  keys = []; history = []; exitHistory = []; employees = {}; adminPw = 'admin1234';
+  save(); render(); adminLogout();
+  showToast('初期化しました', 'info');
+}
+
+// ===== UI =====
+function switchTab(tab, el) {
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(`sec-${tab}`).classList.add('active');
+  if (el) el.classList.add('active');
+  if (tab==='history') renderHistory();
+}
+
+function filterHistory(type, el) {
+  currentFilter = type;
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderHistory();
+}
+
+function exportCSV() {
+  // 通常履歴
+  const header1 = '種別,鍵番号,鍵名称,持出従業員番号,持出者名,持出日時,返却従業員番号,返却者名,返却日時';
+  const rows1 = history.map(h =>
+    `通常,${h.keyNum},${h.keyName},${h.coEmpId},${h.coName},${h.coTime},${h.rtEmpId||''},${h.rtName||''},${h.returnTime||''}`);
+  // 最終退場履歴
+  const header2 = '種別,従業員番号,氏名,退場日時';
+  const rows2 = exitHistory.map(h => `最終退場,${h.empId},${h.name},${h.time}`);
+  const csv = '\uFEFF' + [header1, ...rows1, '', header2, ...rows2].join('\n');
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([csv],{type:'text/csv'})),
+    download: `鍵管理履歴_${fmt(new Date()).replace(/[: /]/g,'-')}.csv`
+  });
+  a.click();
+}
+
+function fmt(d) {
+  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function showToast(msg, type='info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast ${type} show`;
+  setTimeout(()=>t.classList.remove('show'), 2800);
+}
+
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target===o) closeModal(); });
+});
+document.getElementById('adminPwInput').addEventListener('keydown', e => { if (e.key==='Enter') adminLogin(); });
+
+render();
+</script>
+</body>
+</html>
